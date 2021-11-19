@@ -46,6 +46,21 @@ impl Chip8 {
     fn pc_inbounds(&self) -> bool {
         self.pc >= INIT_INDEX && self.pc < 4095
     }
+    
+    fn print_program(&self) {
+        let mut zero_counter = 0;
+        for i in (INIT_INDEX..4095).step_by(2) {
+            let val1 = self.memory[i];
+            let val2 = self.memory[i+1];
+            if val1 == 0 {
+                zero_counter += 1;
+            }
+            if zero_counter > 8 {
+                break;
+            }
+            println!("{:01x}{:01x}", val1, val2);
+        }
+    }
 }
 
 fn execute(instruction: Instruction, chip8: &mut Chip8) {
@@ -65,14 +80,14 @@ fn execute(instruction: Instruction, chip8: &mut Chip8) {
         Instruction::SetIndexRegister { value } => {
             chip8.index_register = value;
         },
-        Instruction::Draw { x_r, y_r, height } => {
+        Instruction::Draw { x_r, y_r, height } => { // TODO: problem is probably here
             let x = chip8.registers[x_r as usize] % SCREEN_WIDTH as u8;
             let y = chip8.registers[y_r as usize] % SCREEN_HEIGHT as u8;
-            // println!("Sprite: {}", height);
+            println!("Sprite: {}", height);
             for row_index in 0..height {
                 let mem_location = chip8.index_register + row_index as u16;
                 let sprite_row = chip8.memory[mem_location as usize];
-                // println!("{:08b}", sprite_row);
+                println!("{:08b}", sprite_row);
                 for bit_pos in 0..8 {
                     if ((1_u8 << bit_pos) & sprite_row) != 0 {
                         let pix_x = x + bit_pos;
@@ -92,27 +107,12 @@ fn clear_terminal() {
 }
 
 fn render_screen(display: &Screen) {
-    clear_terminal();
+    // clear_terminal();
     for y in 0..SCREEN_HEIGHT {
         for x in 0..SCREEN_WIDTH {
             print!("{}", if display[x][y] { 'A' } else { ' ' });
         }
         println!("");
-    }
-}
-
-fn print_program(chip8: &Chip8) {
-    let mut zero_counter = 0;
-    for i in (INIT_INDEX..4095).step_by(2) {
-        let val1 = chip8.memory[i];
-        let val2 = chip8.memory[i+1];
-        if val1 == 0 {
-            zero_counter += 1;
-        }
-        if zero_counter > 8 {
-            break;
-        }
-        println!("{:01x}{:01x}", val1, val2);
     }
 }
 
@@ -145,6 +145,7 @@ fn main() {
         } else {
             panic!("Reached unimplemented or invalid instruction: {:#04x}", raw_instruction);
         }
-        // render_screen(&chip8.display);
+        render_screen(&chip8.display);
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
