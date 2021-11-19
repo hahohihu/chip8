@@ -1,4 +1,4 @@
-use crate::types::Instruction;
+use crate::chip8::Instruction;
 
 fn n_set_bits(num_bits: u8) -> u16 {
     (1 << num_bits) - 1
@@ -60,7 +60,7 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::Instruction;
+    use crate::chip8::Instruction;
     use super::decode;
     #[test]
     fn working_instructions() {
