@@ -5,15 +5,25 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
     match get_nibble(instruction, 0) {
         0x0 => match get_nibbles(instruction, 1, 3) {
             0x0e0 => Some(Instruction::ClearScreen),
+            0x0ee => Some(Instruction::Return),
             _ => None,
         },
         0x1 => {
-            let dest = get_nibbles(instruction, 1, 3);
-            Some(Instruction::Jump { dest })
+            Some(Instruction::Jump { 
+                dest: get_nibbles(instruction, 1, 3) 
+            })
         }
-        0x2 => None,
+        0x2 => {
+            Some(Instruction::CallSubroutine { 
+                dest: get_nibbles(instruction, 1, 3) 
+            })
+        },
         0x3 => None,
-        0x4 => None,
+        0x4 => {
+            let register = get_nibble(instruction, 1);
+            let value = get_nibbles(instruction, 2, 2) as u8;
+            Some(Instruction::SkipNEQ { register, value })
+        },
         0x5 => None,
         0x6 => {
             let register = get_nibble(instruction, 1);
@@ -40,7 +50,15 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
             Some(Instruction::Draw { x_r, y_r, height })
         }
         0xe => None,
-        0xf => None,
+        0xf => {
+            match get_nibbles(instruction, 2, 2) {
+                0x1e => {
+                    Some(Instruction::AddToIndex { register: get_nibble(instruction, 1) })
+                    // TODO: set overflow
+                },
+                _ => None
+            }
+        },
         _ => panic!("Impossible instruction"),
     }
 }

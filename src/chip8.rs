@@ -1,15 +1,20 @@
 use std::io::Read;
 use crate::bits::{U4, U12};
-use log;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {
     ClearScreen,
+    Return,
     Jump { dest: U12 },
+    CallSubroutine { dest: U12},
+    // SkipEQ { register: U4, value: u8 },
+    SkipNEQ { register: U4, value: u8 },
+    // SkipEQR { register1: U4, register2: U4 },
     SetRegister { register: U4, value: u8 },
     AddToRegister { register: U4, value: u8 },
     SetIndexRegister { value: U12 },
     Draw { x_r: U4, y_r: U4, height: U4 },
+    AddToIndex { register: U4 },
 }
 
 pub const INIT_INDEX: usize = 0x200;
@@ -43,7 +48,8 @@ pub struct Chip8 {
     pub index_register: u16,
     pub delay_timer: u8,
     pub sound_timer: u8,
-    pub display: Screen
+    pub display: Screen,
+    pub stack: Vec<usize>
 }
 
 impl Chip8 {
@@ -55,7 +61,8 @@ impl Chip8 {
             index_register: 0,
             delay_timer: 0,
             sound_timer: 0,
-            display: BLANK_SCREEN
+            display: BLANK_SCREEN,
+            stack: Vec::new()
         };
         chip8.memory[0..FONT.len()].copy_from_slice(&FONT);
         chip8
@@ -101,8 +108,20 @@ impl Chip8 {
             Instruction::ClearScreen => {
                 self.display = BLANK_SCREEN;
             },
+            Instruction::Return => {
+                self.pc = self.stack.pop().expect("Program tried to return but stack was empty.");
+            },
             Instruction::Jump { dest } => {
                 self.pc = dest as usize;
+            },
+            Instruction::CallSubroutine { dest} => {
+                self.stack.push(self.pc);
+                self.pc = dest as usize;
+            },
+            Instruction::SkipNEQ { register, value} => {
+                if self.registers[register as usize] != value {
+                    self.pc += 2;
+                }
             },
             Instruction::SetRegister { register, value } => {
                 self.registers[register as usize] = value;
@@ -130,6 +149,9 @@ impl Chip8 {
                     }
                 }
             },
+            Instruction::AddToIndex { register } => {
+                self.index_register += self.registers[register as usize] as u16;
+            }
         }
     }
 }
@@ -162,6 +184,10 @@ mod tests {
         assert!(chip8.display[0][0]);
         assert!(chip8.display[1][0]);
         assert!(chip8.display[0][1]);
+        chip8.execute(Instruction::Draw { x_r: 0, y_r: 0, height: 5 });
+        assert!(!chip8.display[0][0]);
+        assert!(!chip8.display[1][0]);
+        assert!(!chip8.display[0][1]);
     }
 
     use proptest::prelude::*;
