@@ -1,7 +1,5 @@
 use std::io::Read;
-
-pub type U4 = u8;
-pub type U12 = u16;
+use crate::bits::{U4, U12};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {

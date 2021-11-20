@@ -1,20 +1,5 @@
 use crate::chip8::Instruction;
-
-fn n_set_bits(num_bits: u8) -> u16 {
-    assert!(num_bits < 16);
-    (1 << num_bits) - 1
-}
-
-fn get_nibbles(instruction: u16, index: u8, num: u8) -> u16 {
-    assert!(num <= 4); // Only 4 nibbles in u16
-    assert!(index + num <= 4); // indexes from 0-3
-    (instruction >> ((4 - index - num) * 4)) & n_set_bits(num * 4)
-}
-
-fn get_nibble(instruction: u16, index: u8) -> u8 {
-    assert!(index <= 3);
-    get_nibbles(instruction, index, 1) as u8
-}
+use crate::bits::{get_nibble, get_nibbles};
 
 pub fn decode(instruction: u16) -> Option<Instruction> {
     match get_nibble(instruction, 0) {

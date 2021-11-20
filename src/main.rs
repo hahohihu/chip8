@@ -1,5 +1,6 @@
 mod decode;
 mod chip8;
+mod bits;
 
 use chip8::{Chip8, render_screen};
 
