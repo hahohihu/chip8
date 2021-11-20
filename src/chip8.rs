@@ -1,6 +1,9 @@
 use std::io::Read;
+use std::num::Wrapping;
+use std::time::{Duration, Instant};
 use crate::bits::{U4, U12};
 use crate::decode::decode;
+use rand::prelude::*;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {
@@ -8,15 +11,20 @@ pub enum Instruction {
     Return,
     Jump { dest: U12 },
     CallSubroutine { dest: U12},
-    // SkipEQ { register: U4, value: u8 },
+    SkipEQ { register: U4, value: u8 },
     SkipNEQ { register: U4, value: u8 },
-    // SkipEQR { register1: U4, register2: U4 },
+    SkipEQR { register1: U4, register2: U4 },
+    SkipNEQR { register1: U4, register2: U4 },
     SetRegister { register: U4, value: u8 },
     AddToRegister { register: U4, value: u8 },
     SetIndexRegister { value: U12 },
+    MovRegister { register1: U4, register2: U4 },
+    Random { register: U4, value: u8 },
     Draw { x_r: U4, y_r: U4, height: U4 },
     SkipPressed { key: U4 },
     SkipNotPressed { key: U4 },
+    GetDelayTimer { register: U4 },
+    SetDelayTimer { register: U4 },
     AddToIndex { register: U4 },
 }
 
@@ -50,27 +58,31 @@ const FONT: [u8; 80] = [
 ];
 
 pub struct Chip8 {
-    pub registers: [u8; 16],
+    pub registers: [Wrapping<u8>; 16],
     pub memory: [u8; 4096],
     pub pc: usize,
     pub index_register: u16,
     pub delay_timer: u8,
     pub sound_timer: u8,
     pub display: Screen,
-    pub stack: Vec<usize>
+    pub stack: Vec<usize>,
+    last_clock: Instant,
+    rng: StdRng
 }
 
 impl Chip8 {
     pub fn new() -> Self {
         let mut chip8 = Chip8 {
-            registers: [0; 16],
+            registers: [Wrapping(0); 16],
             memory: [0; 4096],
             pc: INIT_INDEX,
             index_register: 0,
             delay_timer: 0,
             sound_timer: 0,
             display: BLANK_SCREEN,
-            stack: Vec::new()
+            stack: Vec::new(),
+            last_clock: Instant::now(),
+            rng: StdRng::seed_from_u64(0)
         };
         chip8.memory[0..FONT.len()].copy_from_slice(&FONT);
         chip8
@@ -127,23 +139,45 @@ impl Chip8 {
                 self.stack.push(self.pc);
                 self.pc = dest as usize;
             },
+            Instruction::SkipEQ { register, value} => {
+                if self.registers[register as usize].0 == value {
+                    self.pc += 2;
+                }
+            },
             Instruction::SkipNEQ { register, value} => {
-                if self.registers[register as usize] != value {
+                if self.registers[register as usize].0 != value {
+                    self.pc += 2;
+                }
+            },
+            Instruction::SkipEQR { register1, register2} => {
+                if self.registers[register1 as usize] == self.registers[register2 as usize] {
+                    self.pc += 2;
+                }
+            },
+            Instruction::SkipNEQR { register1, register2} => {
+                if self.registers[register1 as usize] != self.registers[register2 as usize] {
                     self.pc += 2;
                 }
             },
             Instruction::SetRegister { register, value } => {
-                self.registers[register as usize] = value;
+                self.registers[register as usize].0 = value;
             },
             Instruction::AddToRegister { register, value } => {
-                self.registers[register as usize] += value; // TODO: not clear if this should set carry flag
+                self.registers[register as usize] += Wrapping(value); // TODO: not clear if this should set carry flag
+            },
+            Instruction::MovRegister { register1, register2 } => {
+                self.registers[register1 as usize] = self.registers[register2 as usize];
             },
             Instruction::SetIndexRegister { value } => {
                 self.index_register = value;
             },
+            Instruction::Random { register, value } => {
+                let num: u8 = self.rng.gen();
+                self.registers[register as usize].0 = num & value;
+            },
             Instruction::Draw { x_r, y_r, height } => { // TODO: problem is probably here
-                let x = self.registers[x_r as usize] % SCREEN_WIDTH as u8;
-                let y = self.registers[y_r as usize] % SCREEN_HEIGHT as u8;
+                let x = self.registers[x_r as usize].0 % SCREEN_WIDTH as u8;
+                let y = self.registers[y_r as usize].0 % SCREEN_HEIGHT as u8;
                 for row_index in 0..height {
                     let mem_location = self.index_register + row_index as u16;
                     let sprite_row = self.memory[mem_location as usize];
@@ -151,7 +185,7 @@ impl Chip8 {
                         if ((1_u8 << bit_pos) & sprite_row) != 0 {
                             let pix_x = x + 7 - bit_pos;
                             let pix_y = y + row_index;
-                            if pix_x >= x && pix_y >= y {
+                            if pix_x < SCREEN_WIDTH as u8 && pix_y < SCREEN_HEIGHT as u8 {
                                 self.display[pix_y as usize][pix_x as usize] ^= true;
                             }
                         }
@@ -175,16 +209,33 @@ impl Chip8 {
                     self.pc += 2;
                 }
             },
+            Instruction::GetDelayTimer { register } => {
+                self.registers[register as usize] = Wrapping(self.delay_timer);
+            },
+            Instruction::SetDelayTimer { register } => {
+                self.delay_timer = self.registers[register as usize].0;
+            },
             Instruction::AddToIndex { register } => {
-                self.index_register += self.registers[register as usize] as u16;
+                self.index_register += self.registers[register as usize].0 as u16;
             }
         }
         Cycle::Complete
     }
 
-    pub fn cycle(&mut self, key_pressed: Option<u8>) -> Cycle {
+    pub fn cycle(&mut self, key_pressed: Option<u8>, now: Instant) -> Cycle {
         if !self.pc_inbounds() {
             panic!("PC reached bad value: {}", self.pc);
+        }
+        key_pressed.map(|k| log::debug!("Key pressed {}", k));
+        let time_60hz = Duration::from_secs_f32(1.0) / 60;
+        if now.duration_since(self.last_clock) >= time_60hz {
+            if self.delay_timer > 0 {
+                self.delay_timer -= 1;
+            }
+            if self.sound_timer > 0 {
+                self.sound_timer -= 1;
+            }
+            self.last_clock = now; // TODO: this gradually loses accuracy resulting in it being significantly less than <60 Hz
         }
         let raw_instruction: u16 = self.get_instruction();
         log::debug!("Received raw instruction: {:#04x}", raw_instruction);  

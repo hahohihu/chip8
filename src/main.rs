@@ -8,7 +8,7 @@ use winit::dpi::{LogicalPosition, LogicalSize, PhysicalSize};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::event::{Event, VirtualKeyCode};
 use winit_input_helper::WinitInputHelper;
-
+use std::time::{Duration, Instant};
 use env_logger;
 
 fn load_rom(chip8: &mut Chip8) {
@@ -19,13 +19,14 @@ fn load_rom(chip8: &mut Chip8) {
 }
 
 fn main() {
-    env_logger::init();
+    env_logger::builder().format_timestamp(None).init();
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
     let (window, width, height, mut _hidpi_factor) = create_window("CHIP-8 Emulator", &event_loop);
     let surface_texture = SurfaceTexture::new(width, height, &window);
     let mut pixels = Pixels::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, surface_texture).expect("Failed to start graphics library");
     let mut chip8 = Chip8::new();
+    let mut time = Instant::now();
     load_rom(&mut chip8);
     event_loop.run(move |event, _, control_flow| {
         if let Event::RedrawRequested(_) = event {
@@ -54,30 +55,39 @@ fn main() {
                 (VirtualKeyCode::Key1, 1_u8),
                 (VirtualKeyCode::Key2, 2),
                 (VirtualKeyCode::Key3, 3),
-                (VirtualKeyCode::Key4, 4),
-                (VirtualKeyCode::Key5, 5),
-                (VirtualKeyCode::Key6, 6),
-                (VirtualKeyCode::Key7, 7),
-                (VirtualKeyCode::Key8, 8),
-                (VirtualKeyCode::Key9, 9),
-                (VirtualKeyCode::Key0, 0),
-                (VirtualKeyCode::A, 0xa),
-                (VirtualKeyCode::B, 0xb),
-                (VirtualKeyCode::C, 0xc),
-                (VirtualKeyCode::D, 0xd),
-                (VirtualKeyCode::E, 0xe),
-                (VirtualKeyCode::F, 0xf),
+                (VirtualKeyCode::Key4, 0xc),
+                (VirtualKeyCode::Q, 4),
+                (VirtualKeyCode::W, 5),
+                (VirtualKeyCode::E, 6),
+                (VirtualKeyCode::R, 0xd),
+                (VirtualKeyCode::A, 7),
+                (VirtualKeyCode::S, 8),
+                (VirtualKeyCode::D, 9),
+                (VirtualKeyCode::F, 0xe),
+                (VirtualKeyCode::Z, 0xa),
+                (VirtualKeyCode::X, 0),
+                (VirtualKeyCode::C, 0xb),
+                (VirtualKeyCode::V, 0xf),
             ];
 
             for (key, num) in key2num {
-                if input.key_pressed(key) {
+                if input.key_pressed(key) { // TODO: this varies, in some cases wait until released
                     key_pressed = Some(num);
+                    log::info!("Key pressed: {:?}", key_pressed);
                 }
             }
         }
 
-        if let Cycle::RedrawRequested = chip8.cycle(key_pressed) {
-            window.request_redraw();
+        // Get a new delta time.
+        let now = Instant::now();
+        let dt = now.duration_since(time);
+        let clock_speed = 1_000_000; // TODO: make configurable
+        let clock_gap = Duration::from_secs_f32(1.0) / clock_speed;
+        if dt >= clock_gap {
+            if let Cycle::RedrawRequested = chip8.cycle(key_pressed, now) {
+                window.request_redraw();
+            }
+            time = now;
         }
     });
 }

@@ -160,6 +160,7 @@ dependencies = [
  "log",
  "pixels",
  "proptest",
+ "rand",
  "winit",
  "winit_input_helper",
 ]

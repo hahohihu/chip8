@@ -18,13 +18,18 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
                 dest: get_nibbles(instruction, 1, 3) 
             })
         },
-        0x3 => None,
-        0x4 => {
-            let register = get_nibble(instruction, 1);
-            let value = get_nibbles(instruction, 2, 2) as u8;
-            Some(Instruction::SkipNEQ { register, value })
-        },
-        0x5 => None,
+        0x3 => Some(Instruction::SkipEQ {
+            register: get_nibble(instruction, 1),
+            value: get_nibbles(instruction, 2, 2) as u8
+        }),
+        0x4 => Some(Instruction::SkipNEQ {
+            register: get_nibble(instruction, 1),
+            value: get_nibbles(instruction, 2, 2) as u8
+        }),
+        0x5 => Some(Instruction::SkipEQR {
+            register1: get_nibble(instruction, 1),
+            register2: get_nibble(instruction, 2),
+        }),
         0x6 => {
             let register = get_nibble(instruction, 1);
             let value = get_nibbles(instruction, 2, 2) as u8;
@@ -35,14 +40,26 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
             let value = get_nibbles(instruction, 2, 2) as u8;
             Some(Instruction::AddToRegister { register, value })
         }
-        0x8 => None,
-        0x9 => None,
+        0x8 => match get_nibble(instruction, 3) {
+            0 => Some(Instruction::MovRegister { 
+                register1: get_nibble(instruction, 1), 
+                register2: get_nibble(instruction, 2)
+            }),
+            _ => None
+        },
+        0x9 => Some(Instruction::SkipNEQR {
+            register1: get_nibble(instruction, 1),
+            register2: get_nibble(instruction, 2),
+        }),
         0xa => {
             let value = get_nibbles(instruction, 1, 3);
             Some(Instruction::SetIndexRegister { value })
         }
         0xb => None,
-        0xc => None,
+        0xc => Some(Instruction::Random { 
+            register: get_nibble(instruction, 1),
+            value: get_nibbles(instruction, 2, 2) as u8
+        }),
         0xd => {
             let x_r = get_nibble(instruction, 1);
             let y_r = get_nibble(instruction, 2);
@@ -54,12 +71,14 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
             0xa1 => Some(Instruction::SkipNotPressed { key: get_nibble(instruction, 1) }),
             _ => None
         },
-        0xf => match get_nibbles(instruction, 2, 2) {
-            0x1e => {
-                Some(Instruction::AddToIndex { register: get_nibble(instruction, 1) })
-                // TODO: set overflow
-            },
-            _ => None
+        0xf => {
+            let nib = get_nibble(instruction, 1);
+            match get_nibbles(instruction, 2, 2) {
+                0x07 => Some(Instruction::GetDelayTimer { register: nib }),
+                0x15 => Some(Instruction::SetDelayTimer { register: nib }),
+                0x1e => Some(Instruction::AddToIndex { register: nib }), // TODO: set overflow
+                _ => None
+            }
         },
         _ => panic!("Impossible instruction"),
     }
