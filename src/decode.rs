@@ -52,5 +52,16 @@ mod tests {
     #[test]
     fn working_instructions() {
         assert_eq!(decode(0xa2e0).unwrap(), Instruction::SetIndexRegister { value: 0x2e0 });
+        assert_eq!(decode(0xdeaf).unwrap(), Instruction::Draw {x_r: 0xe, y_r: 0xa, height: 0xf });
+        assert_eq!(decode(0x7abc).unwrap(), Instruction::AddToRegister { register: 0xa, value: 0xbc });
+    }
+
+    use proptest::prelude::*;
+    proptest! {
+        #[test]
+        fn never_panics(instruction in 0..std::u16::MAX)
+        {
+            decode(instruction);
+        }
     }
 }

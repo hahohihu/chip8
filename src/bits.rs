@@ -36,15 +36,22 @@ pub fn get_nibble(instruction: u16, index: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    use super::{get_nibbles, get_nibble};
+    #[test]
+    fn some_nibbles() {
+        assert_eq!(get_nibble(0xdeaf, 0), 0xd);
+        assert_eq!(get_nibble(0xdeaf, 1), 0xe);
+        assert_eq!(get_nibble(0xdeaf, 2), 0xa);
+        assert_eq!(get_nibble(0xdeaf, 3), 0xf);
+    }
     use proptest::prelude::*;
     proptest! {
         #[test]
-        fn never_fails(
+        fn never_panics(
             instruction in 0..std::u16::MAX, 
             index in 0..4, 
             num_nibbles in 1..4) 
         {
-            use crate::bits::get_nibbles;
             if index + num_nibbles <= 4 {
                 get_nibbles(instruction as u16, index as u8, num_nibbles as u8);
             }
