@@ -1,6 +1,7 @@
 use std::io::Read;
 use std::num::Wrapping;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 use crate::bits::{U4, U12};
 use crate::decode::decode;
 use rand::prelude::*;
@@ -124,7 +125,7 @@ impl Chip8 {
         println!("Delay = {}", self.delay_timer);
         println!("Sound = {}", self.sound_timer);
         println!("====Stack===============================");
-        println!("Stack = {}", self.sound_timer);
+        println!("Stack = {:?}", self.stack);
     }
     
     pub fn print_program(&self) {
@@ -248,14 +249,14 @@ impl Chip8 {
             },
             Instruction::SkipPressed { key } => {
                 if let Some(k) = key_pressed {
-                    if k == key {
+                    if self.registers[key as usize].0 == k {
                         self.pc += 2;
                     }
                 }
             },
             Instruction::SkipNotPressed { key } => {
                 if let Some(k) = key_pressed {
-                    if k != key {
+                    if self.registers[key as usize].0 != k {
                         self.pc += 2;
                     }
                 } else {
@@ -304,9 +305,6 @@ impl Chip8 {
     }
 
     pub fn cycle(&mut self, key_pressed: Option<u8>, now: Instant) -> Cycle {
-        self.print_state();
-        self.print_program();
-        println!("Input: {:?}", key_pressed);
         if !self.pc_inbounds() {
             panic!("PC reached bad value: {}", self.pc);
         }
@@ -355,31 +353,48 @@ mod tests {
         env_logger::builder().is_test(true).try_init().unwrap();
     }
 
+    use std::num::Wrapping;
+    use std::time::{Duration, Instant};
+
     use super::{Chip8, Instruction};
     #[test]
     fn draw_tests() {
         init();
         let mut chip8 = Chip8::new();
-        chip8.execute(Instruction::Draw { x_r: 0, y_r: 0, height: 5 });
+        chip8.execute(Instruction::Draw { x_r: 0, y_r: 0, height: 5 }, None);
         assert!(chip8.display[0][0]);
         assert!(chip8.display[1][0]);
         assert!(chip8.display[0][1]);
-        chip8.execute(Instruction::Draw { x_r: 0, y_r: 0, height: 5 });
+        chip8.execute(Instruction::Draw { x_r: 0, y_r: 0, height: 5 }, None);
         assert!(!chip8.display[0][0]);
         assert!(!chip8.display[1][0]);
         assert!(!chip8.display[0][1]);
+    }
+    
+    #[test]
+    fn rom_test() {
+        let mut chip8 = Chip8::new();
+        chip8.read_program(std::fs::File::open("test/min_game.ch8").unwrap()).unwrap();
+        let mut now = Instant::now();
+        for i in 0..35 {
+            now += Duration::from_secs(1);
+            chip8.cycle(Some(8), now);
+            println!("~~~({})~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", i);
+            chip8.print_program();
+            chip8.print_state();
+        }
     }
 
     use proptest::prelude::*;
     proptest! {
         #[test]
-        fn basic_instructions(v_u12 in 0..(1 << 12))
+        fn basic_instructions(v_u12 in (0 as usize)..(1 << 12))
         {
             let mut chip8 = Chip8::new();
-            chip8.execute(Instruction::SetIndexRegister { value: v_u12 as u16 });
-            assert_eq!(chip8.index_register as i32, v_u12);
-            chip8.execute(Instruction::Jump { dest: v_u12 as u16 });
-            assert_eq!(chip8.pc as i32, v_u12);
+            chip8.execute(Instruction::SetIndexRegister { value: v_u12 as u16 }, None);
+            assert_eq!(chip8.index_register, Wrapping(v_u12 as u16));
+            chip8.execute(Instruction::Jump { dest: v_u12 as u16 }, None);
+            assert_eq!(chip8.pc, v_u12);
         }
 
         #[test]
@@ -389,7 +404,7 @@ mod tests {
             c in 0..(1 << 4),
         ) {
             let mut chip8 = Chip8::new();
-            chip8.execute(Instruction::Draw {x_r: a as u8, y_r: b as u8, height:c as u8});
+            chip8.execute(Instruction::Draw {x_r: a as u8, y_r: b as u8, height:c as u8}, None);
         }
     }
 }

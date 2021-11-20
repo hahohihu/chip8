@@ -3,12 +3,13 @@ mod chip8;
 mod bits;
 
 use chip8::{Chip8, Cycle, SCREEN_HEIGHT, SCREEN_WIDTH};
+use std::time::Instant;
 use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::{LogicalPosition, LogicalSize, PhysicalSize};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::event::{Event, VirtualKeyCode};
 use winit_input_helper::WinitInputHelper;
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 use env_logger;
 
 fn load_rom(chip8: &mut Chip8) {
@@ -51,7 +52,7 @@ fn main() {
                 pixels.resize_surface(size.width, size.height);
             }
 
-            let key2num = vec![
+            let key2num = [
                 (VirtualKeyCode::Key1, 1_u8),
                 (VirtualKeyCode::Key2, 2),
                 (VirtualKeyCode::Key3, 3),
@@ -71,7 +72,7 @@ fn main() {
             ];
 
             for (key, num) in key2num {
-                if input.key_held(key) { // TODO: this varies, in some cases wait until released
+                if input.key_pressed(key) || input.key_held(key) { // TODO: this varies, in some cases wait until released
                     key_pressed = Some(num);
                     log::info!("Key pressed: {:?}", key_pressed);
                 }
@@ -81,9 +82,10 @@ fn main() {
         // Get a new delta time.
         let now = Instant::now();
         let dt = now.duration_since(time);
-        let clock_speed = 50; // TODO: make configurable
+        let clock_speed = 500_000; // TODO: make configurable
         let clock_gap = Duration::from_secs_f32(1.0) / clock_speed;
         if dt >= clock_gap {
+            println!("{:?}", dt);
             if let Cycle::RedrawRequested = chip8.cycle(key_pressed, now) {
                 window.request_redraw();
             }
