@@ -33,6 +33,7 @@ fn main() {
             pixels.render().expect("Failed to render");
         }
 
+        let mut key_pressed: Option<u8> = None;
         if input.update(&event) {
             if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
                 *control_flow = ControlFlow::Exit;
@@ -48,9 +49,34 @@ fn main() {
             if let Some(size) = input.window_resized() {
                 pixels.resize_surface(size.width, size.height);
             }
+
+            let key2num = vec![
+                (VirtualKeyCode::Key1, 1_u8),
+                (VirtualKeyCode::Key2, 2),
+                (VirtualKeyCode::Key3, 3),
+                (VirtualKeyCode::Key4, 4),
+                (VirtualKeyCode::Key5, 5),
+                (VirtualKeyCode::Key6, 6),
+                (VirtualKeyCode::Key7, 7),
+                (VirtualKeyCode::Key8, 8),
+                (VirtualKeyCode::Key9, 9),
+                (VirtualKeyCode::Key0, 0),
+                (VirtualKeyCode::A, 0xa),
+                (VirtualKeyCode::B, 0xb),
+                (VirtualKeyCode::C, 0xc),
+                (VirtualKeyCode::D, 0xd),
+                (VirtualKeyCode::E, 0xe),
+                (VirtualKeyCode::F, 0xf),
+            ];
+
+            for (key, num) in key2num {
+                if input.key_pressed(key) {
+                    key_pressed = Some(num);
+                }
+            }
         }
 
-        if let Cycle::RedrawRequested = chip8.cycle() {
+        if let Cycle::RedrawRequested = chip8.cycle(key_pressed) {
             window.request_redraw();
         }
     });

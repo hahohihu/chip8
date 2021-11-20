@@ -48,16 +48,18 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
             let y_r = get_nibble(instruction, 2);
             let height = get_nibble(instruction, 3);
             Some(Instruction::Draw { x_r, y_r, height })
-        }
-        0xe => None,
-        0xf => {
-            match get_nibbles(instruction, 2, 2) {
-                0x1e => {
-                    Some(Instruction::AddToIndex { register: get_nibble(instruction, 1) })
-                    // TODO: set overflow
-                },
-                _ => None
-            }
+        },
+        0xe => match get_nibbles(instruction, 2, 2) {
+            0x9e => Some(Instruction::SkipPressed { key: get_nibble(instruction, 1) }),
+            0xa1 => Some(Instruction::SkipNotPressed { key: get_nibble(instruction, 1) }),
+            _ => None
+        },
+        0xf => match get_nibbles(instruction, 2, 2) {
+            0x1e => {
+                Some(Instruction::AddToIndex { register: get_nibble(instruction, 1) })
+                // TODO: set overflow
+            },
+            _ => None
         },
         _ => panic!("Impossible instruction"),
     }

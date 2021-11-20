@@ -15,6 +15,8 @@ pub enum Instruction {
     AddToRegister { register: U4, value: u8 },
     SetIndexRegister { value: U12 },
     Draw { x_r: U4, y_r: U4, height: U4 },
+    SkipPressed { key: U4 },
+    SkipNotPressed { key: U4 },
     AddToIndex { register: U4 },
 }
 
@@ -109,7 +111,7 @@ impl Chip8 {
         render_screen(&self.display);
     }
 
-    pub fn execute(&mut self, instruction: Instruction) -> Cycle {
+    pub fn execute(&mut self, instruction: Instruction, key_pressed: Option<u8>) -> Cycle {
         match instruction {
             Instruction::ClearScreen => {
                 self.display = BLANK_SCREEN;
@@ -157,6 +159,22 @@ impl Chip8 {
                 }
                 return Cycle::RedrawRequested;
             },
+            Instruction::SkipPressed { key } => {
+                if let Some(k) = key_pressed {
+                    if k == key {
+                        self.pc += 2;
+                    }
+                }
+            },
+            Instruction::SkipNotPressed { key } => {
+                if let Some(k) = key_pressed {
+                    if k != key {
+                        self.pc += 2;
+                    }
+                } else {
+                    self.pc += 2;
+                }
+            },
             Instruction::AddToIndex { register } => {
                 self.index_register += self.registers[register as usize] as u16;
             }
@@ -164,7 +182,7 @@ impl Chip8 {
         Cycle::Complete
     }
 
-    pub fn cycle(&mut self) -> Cycle {
+    pub fn cycle(&mut self, key_pressed: Option<u8>) -> Cycle {
         if !self.pc_inbounds() {
             panic!("PC reached bad value: {}", self.pc);
         }
@@ -173,7 +191,7 @@ impl Chip8 {
         self.pc += 2;
         if let Some(instruction) = decode(raw_instruction) {
             log::debug!("Received instruction {:?}", instruction);
-            return self.execute(instruction);
+            return self.execute(instruction, key_pressed);
         } else {
             panic!("Reached unimplemented or invalid instruction: {:#04x}", raw_instruction);
         }
@@ -233,6 +251,16 @@ mod tests {
             assert_eq!(chip8.index_register as i32, v_u12);
             chip8.execute(Instruction::Jump { dest: v_u12 as u16 });
             assert_eq!(chip8.pc as i32, v_u12);
+        }
+
+        #[test]
+        fn draw_doesnt_crash(
+            a in 0..(1 << 4),
+            b in 0..(1 << 4),
+            c in 0..(1 << 4),
+        ) {
+            let mut chip8 = Chip8::new();
+            chip8.execute(Instruction::Draw {x_r: a as u8, y_r: b as u8, height:c as u8});
         }
     }
 }
