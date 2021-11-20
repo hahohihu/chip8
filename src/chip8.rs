@@ -104,7 +104,7 @@ impl Chip8 {
     }
 
     pub fn pc_inbounds(&self) -> bool {
-        self.pc >= INIT_INDEX && self.pc < 4095
+        self.pc >= INIT_INDEX && self.pc < 4095 && self.pc % 2 == 0
     }
 
     pub fn read_program(&mut self, read: impl std::io::Read) -> Result<usize, std::io::Error> {
@@ -113,25 +113,34 @@ impl Chip8 {
         take.read(&mut slice)
     }
 
+    pub fn print_state(&self) {
+        println!("====Display=============================");
+        render_screen(&self.display);
+        println!("====Registers===========================");
+        for (i, reg) in self.registers.map(|v| v.0).iter().enumerate() {
+            println!("Register {} = {}", i, reg);
+        }
+        println!("Index = {}", self.index_register.0);
+        println!("Delay = {}", self.delay_timer);
+        println!("Sound = {}", self.sound_timer);
+        println!("====Stack===============================");
+        println!("Stack = {}", self.sound_timer);
+    }
     
     pub fn print_program(&self) {
-        let mut zero_counter = 0;
+        println!("====Program=============================");
         for i in (INIT_INDEX..4095).step_by(2) {
             let val1 = self.memory[i];
             let val2 = self.memory[i+1];
-            if val1 == 0 {
-                zero_counter += 1;
-            }
-            if zero_counter > 8 {
+            if val1 == 0 && val2 == 0 {
                 break;
             }
-            println!("{:01x}{:01x}", val1, val2);
+            let raw = self.memory[i + 1] as u16 | (self.memory[i] as u16) << 8;
+            if self.pc == i {
+                print!(">>PC>> ");
+            }
+            println!("{}: {:#04x} => {:?}", i, raw, decode(raw));
         }
-    }
-
-    pub fn render(&self) {
-        clear_terminal();
-        render_screen(&self.display);
     }
 
     pub fn execute(&mut self, instruction: Instruction, key_pressed: Option<u8>) -> Cycle {
@@ -295,6 +304,9 @@ impl Chip8 {
     }
 
     pub fn cycle(&mut self, key_pressed: Option<u8>, now: Instant) -> Cycle {
+        self.print_state();
+        self.print_program();
+        println!("Input: {:?}", key_pressed);
         if !self.pc_inbounds() {
             panic!("PC reached bad value: {}", self.pc);
         }
@@ -310,10 +322,8 @@ impl Chip8 {
             self.last_clock = now; // TODO: this gradually loses accuracy resulting in it being significantly less than <60 Hz
         }
         let raw_instruction: u16 = self.get_instruction();
-        log::debug!("Received raw instruction: {:#04x}", raw_instruction);  
         self.pc += 2;
         if let Some(instruction) = decode(raw_instruction) {
-            log::debug!("Received instruction {:?}", instruction);
             return self.execute(instruction, key_pressed);
         } else {
             panic!("Reached unimplemented or invalid instruction: {:#04x}", raw_instruction);
@@ -328,10 +338,6 @@ impl Chip8 {
             }
         }
     }
-}
-
-fn clear_terminal() {
-    print!("{}[2J", 27 as char);
 }
 
 fn render_screen(display: &Screen) {

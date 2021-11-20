@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["test/min_game.ch8"],
+            "args": ["font_draw_jmp.ch8"],
             "cwd": "${workspaceFolder}"
         },
         {

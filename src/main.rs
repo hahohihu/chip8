@@ -15,7 +15,7 @@ fn load_rom(chip8: &mut Chip8) {
     let rom_path = std::env::args().nth(1).expect("No ROM given");
     let file = std::fs::File::open(rom_path).expect("Couldn't find ROM path given");
     chip8.read_program(file).expect("Failed to read ROM");
-
+    chip8.print_program();
 }
 
 fn main() {
@@ -71,7 +71,7 @@ fn main() {
             ];
 
             for (key, num) in key2num {
-                if input.key_pressed(key) { // TODO: this varies, in some cases wait until released
+                if input.key_held(key) { // TODO: this varies, in some cases wait until released
                     key_pressed = Some(num);
                     log::info!("Key pressed: {:?}", key_pressed);
                 }
@@ -81,7 +81,7 @@ fn main() {
         // Get a new delta time.
         let now = Instant::now();
         let dt = now.duration_since(time);
-        let clock_speed = 1_000_000; // TODO: make configurable
+        let clock_speed = 50; // TODO: make configurable
         let clock_gap = Duration::from_secs_f32(1.0) / clock_speed;
         if dt >= clock_gap {
             if let Cycle::RedrawRequested = chip8.cycle(key_pressed, now) {
