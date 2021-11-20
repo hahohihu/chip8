@@ -19,13 +19,24 @@ pub enum Instruction {
     AddToRegister { register: U4, value: u8 },
     SetIndexRegister { value: U12 },
     MovRegister { register1: U4, register2: U4 },
+    BinaryOr { register1: U4, register2: U4 },
+    BinaryAnd { register1: U4, register2: U4 },
+    BinaryXor { register1: U4, register2: U4 },
+    Add { register1: U4, register2: U4 },
+    SubtractForward { register1: U4, register2: U4 },
+    SubtractBackward { register1: U4, register2: U4 },
     Random { register: U4, value: u8 },
     Draw { x_r: U4, y_r: U4, height: U4 },
     SkipPressed { key: U4 },
     SkipNotPressed { key: U4 },
     GetDelayTimer { register: U4 },
+    GetKey { register: U4 },
+    FontChar { register: U4 },
     SetDelayTimer { register: U4 },
+    SetSoundTimer { register: U4 },
     AddToIndex { register: U4 },
+    StoreMemory { register: U4 },
+    LoadMemory { register: U4 },
 }
 
 pub enum Cycle {
@@ -61,7 +72,7 @@ pub struct Chip8 {
     pub registers: [Wrapping<u8>; 16],
     pub memory: [u8; 4096],
     pub pc: usize,
-    pub index_register: u16,
+    pub index_register: Wrapping<u16>,
     pub delay_timer: u8,
     pub sound_timer: u8,
     pub display: Screen,
@@ -76,7 +87,7 @@ impl Chip8 {
             registers: [Wrapping(0); 16],
             memory: [0; 4096],
             pc: INIT_INDEX,
-            index_register: 0,
+            index_register: Wrapping(0),
             delay_timer: 0,
             sound_timer: 0,
             display: BLANK_SCREEN,
@@ -163,13 +174,46 @@ impl Chip8 {
                 self.registers[register as usize].0 = value;
             },
             Instruction::AddToRegister { register, value } => {
-                self.registers[register as usize] += Wrapping(value); // TODO: not clear if this should set carry flag
+                self.registers[register as usize] += Wrapping(value);
             },
             Instruction::MovRegister { register1, register2 } => {
                 self.registers[register1 as usize] = self.registers[register2 as usize];
             },
+            Instruction::BinaryOr { register1, register2 } => {
+                self.registers[register1 as usize] |= self.registers[register2 as usize];
+            },
+            Instruction::BinaryAnd { register1, register2 } => {
+                self.registers[register1 as usize] &= self.registers[register2 as usize];
+            },
+            Instruction::BinaryXor { register1, register2 } => {
+                self.registers[register1 as usize] ^= self.registers[register2 as usize];
+            },
+            Instruction::Add { register1, register2 } => {
+                let saved_val = self.registers[register1 as usize];
+                self.registers[register1 as usize] += self.registers[register2 as usize];
+                // handle overflow
+                self.registers[0xf] = Wrapping(if 
+                    self.registers[register1 as usize] < saved_val
+                    || self.registers[register1 as usize] < self.registers[register1 as usize] 
+                    { 1 } else { 0 }
+                )
+            },
+            Instruction::SubtractForward { register1, register2 } => {
+                self.registers[register1 as usize] -= self.registers[register2 as usize];
+                self.registers[0xf] = Wrapping(
+                    if self.registers[register1 as usize] < self.registers[register2 as usize] 
+                    { 0 } else { 1 }
+                )
+            },
+            Instruction::SubtractBackward { register1, register2 } => {
+                self.registers[register1 as usize] = self.registers[register2 as usize] - self.registers[register1 as usize];
+                self.registers[0xf] = Wrapping(
+                    if self.registers[register1 as usize] > self.registers[register2 as usize] 
+                    { 0 } else { 1 }
+                )
+            },
             Instruction::SetIndexRegister { value } => {
-                self.index_register = value;
+                self.index_register = Wrapping(value);
             },
             Instruction::Random { register, value } => {
                 let num: u8 = self.rng.gen();
@@ -179,7 +223,7 @@ impl Chip8 {
                 let x = self.registers[x_r as usize].0 % SCREEN_WIDTH as u8;
                 let y = self.registers[y_r as usize].0 % SCREEN_HEIGHT as u8;
                 for row_index in 0..height {
-                    let mem_location = self.index_register + row_index as u16;
+                    let mem_location = self.index_register.0 + row_index as u16;
                     let sprite_row = self.memory[mem_location as usize];
                     for bit_pos in 0..8 {
                         if ((1_u8 << bit_pos) & sprite_row) != 0 {
@@ -212,11 +256,39 @@ impl Chip8 {
             Instruction::GetDelayTimer { register } => {
                 self.registers[register as usize] = Wrapping(self.delay_timer);
             },
+            Instruction::GetKey { register } => {
+                if let Some(key) = key_pressed {
+                    self.registers[register as usize] = Wrapping(key);
+                } else {
+                    self.pc -= 2;
+                }
+            },
+            Instruction::FontChar { register } => {
+                self.index_register = Wrapping(self.registers[(register & 0xf) as usize].0 as u16 * 5)
+            },
             Instruction::SetDelayTimer { register } => {
                 self.delay_timer = self.registers[register as usize].0;
             },
+            Instruction::SetSoundTimer { register } => {
+                self.sound_timer = self.registers[register as usize].0;
+            },
             Instruction::AddToIndex { register } => {
-                self.index_register += self.registers[register as usize].0 as u16;
+                let saved_val = self.index_register;
+                self.index_register += Wrapping(self.registers[register as usize].0 as u16);
+                self.registers[0xf] = Wrapping(if self.index_register < saved_val { 1 } else { 0 })
+            },
+            Instruction::StoreMemory { register } => {
+                for i in 0..register as usize {
+                    self.memory[self.index_register.0 as usize + i] = 
+                        self.registers[i].0;
+                }
+            },
+            Instruction::LoadMemory { register } => {
+                for i in 0..register as usize {
+                    self.registers[i].0 = 
+                        self.memory[self.index_register.0 as usize + i];
+                        
+                }
             }
         }
         Cycle::Complete
@@ -233,7 +305,7 @@ impl Chip8 {
                 self.delay_timer -= 1;
             }
             if self.sound_timer > 0 {
-                self.sound_timer -= 1;
+                self.sound_timer -= 1; // TODO: beep here
             }
             self.last_clock = now; // TODO: this gradually loses accuracy resulting in it being significantly less than <60 Hz
         }

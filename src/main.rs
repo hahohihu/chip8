@@ -19,15 +19,15 @@ fn load_rom(chip8: &mut Chip8) {
 }
 
 fn main() {
+    let mut chip8 = Chip8::new();
+    load_rom(&mut chip8);
     env_logger::builder().format_timestamp(None).init();
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
     let (window, width, height, mut _hidpi_factor) = create_window("CHIP-8 Emulator", &event_loop);
     let surface_texture = SurfaceTexture::new(width, height, &window);
     let mut pixels = Pixels::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, surface_texture).expect("Failed to start graphics library");
-    let mut chip8 = Chip8::new();
     let mut time = Instant::now();
-    load_rom(&mut chip8);
     event_loop.run(move |event, _, control_flow| {
         if let Event::RedrawRequested(_) = event {
             chip8.draw(pixels.get_frame());

@@ -40,12 +40,19 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
             let value = get_nibbles(instruction, 2, 2) as u8;
             Some(Instruction::AddToRegister { register, value })
         }
-        0x8 => match get_nibble(instruction, 3) {
-            0 => Some(Instruction::MovRegister { 
-                register1: get_nibble(instruction, 1), 
-                register2: get_nibble(instruction, 2)
-            }),
-            _ => None
+        0x8 => {
+            let register1 = get_nibble(instruction, 1);
+            let register2 = get_nibble(instruction, 2);
+            match get_nibble(instruction, 3) {
+                0 => Some(Instruction::MovRegister { register1, register2 }),
+                1 => Some(Instruction::BinaryOr { register1, register2 }),
+                2 => Some(Instruction::BinaryAnd { register1, register2 }),
+                3 => Some(Instruction::BinaryXor { register1, register2 }),
+                4 => Some(Instruction::Add { register1, register2 }),
+                5 => Some(Instruction::SubtractForward { register1, register2 }),
+                7 => Some(Instruction::SubtractBackward { register1, register2 }),
+                _ => None
+            }
         },
         0x9 => Some(Instruction::SkipNEQR {
             register1: get_nibble(instruction, 1),
@@ -75,8 +82,13 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
             let nib = get_nibble(instruction, 1);
             match get_nibbles(instruction, 2, 2) {
                 0x07 => Some(Instruction::GetDelayTimer { register: nib }),
+                0x0a => Some(Instruction::GetKey { register: nib }),
                 0x15 => Some(Instruction::SetDelayTimer { register: nib }),
+                0x18 => Some(Instruction::SetSoundTimer { register: nib }),
                 0x1e => Some(Instruction::AddToIndex { register: nib }), // TODO: set overflow
+                0x29 => Some(Instruction::FontChar { register: nib }),
+                0x55 => Some(Instruction::StoreMemory { register: nib }),
+                0x65 => Some(Instruction::LoadMemory { register: nib }),
                 _ => None
             }
         },
