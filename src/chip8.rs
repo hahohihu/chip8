@@ -1,5 +1,6 @@
 use std::io::Read;
 use crate::bits::{U4, U12};
+use crate::decode::decode;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {
@@ -17,11 +18,16 @@ pub enum Instruction {
     AddToIndex { register: U4 },
 }
 
+pub enum Cycle {
+    RedrawRequested,
+    Complete
+}
+
 pub const INIT_INDEX: usize = 0x200;
-const SCREEN_WIDTH: usize = 64;
-const SCREEN_HEIGHT: usize = 32;
-type Screen = [[bool; SCREEN_HEIGHT]; SCREEN_WIDTH];
-const BLANK_SCREEN: Screen = [[false; SCREEN_HEIGHT]; SCREEN_WIDTH];
+pub const SCREEN_WIDTH: usize = 64;
+pub const SCREEN_HEIGHT: usize = 32;
+type Screen = [[bool; SCREEN_WIDTH]; SCREEN_HEIGHT];
+const BLANK_SCREEN: Screen = [[false; SCREEN_WIDTH]; SCREEN_HEIGHT];
 const FONT: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -103,10 +109,11 @@ impl Chip8 {
         render_screen(&self.display);
     }
 
-    pub fn execute(&mut self, instruction: Instruction) {
+    pub fn execute(&mut self, instruction: Instruction) -> Cycle {
         match instruction {
             Instruction::ClearScreen => {
                 self.display = BLANK_SCREEN;
+                return Cycle::RedrawRequested;
             },
             Instruction::Return => {
                 self.pc = self.stack.pop().expect("Program tried to return but stack was empty.");
@@ -143,14 +150,40 @@ impl Chip8 {
                             let pix_x = x + 7 - bit_pos;
                             let pix_y = y + row_index;
                             if pix_x >= x && pix_y >= y {
-                                self.display[pix_x as usize][pix_y as usize] ^= true;
+                                self.display[pix_y as usize][pix_x as usize] ^= true;
                             }
                         }
                     }
                 }
+                return Cycle::RedrawRequested;
             },
             Instruction::AddToIndex { register } => {
                 self.index_register += self.registers[register as usize] as u16;
+            }
+        }
+        Cycle::Complete
+    }
+
+    pub fn cycle(&mut self) -> Cycle {
+        if !self.pc_inbounds() {
+            panic!("PC reached bad value: {}", self.pc);
+        }
+        let raw_instruction: u16 = self.get_instruction();
+        log::debug!("Received raw instruction: {:#04x}", raw_instruction);  
+        self.pc += 2;
+        if let Some(instruction) = decode(raw_instruction) {
+            log::debug!("Received instruction {:?}", instruction);
+            return self.execute(instruction);
+        } else {
+            panic!("Reached unimplemented or invalid instruction: {:#04x}", raw_instruction);
+        }
+    }
+
+    pub fn draw(&self, frame: &mut [u8]) {
+        for (y, row) in self.display.iter().enumerate() {
+            for (x, pixel) in row.iter().enumerate() {
+                let i = x * 4 + y * SCREEN_WIDTH * 4;
+                frame[i] = if *pixel { u8::MAX } else { 0 };
             }
         }
     }
@@ -161,9 +194,9 @@ fn clear_terminal() {
 }
 
 fn render_screen(display: &Screen) {
-    for y in 0..SCREEN_HEIGHT {
-        for x in 0..SCREEN_WIDTH {
-            print!("{}", if display[x][y] { 'A' } else { ' ' });
+    for row in display {
+        for pixel in row {
+            print!("{}", if *pixel { 'Q' } else { ' ' });
         }
         println!("");
     }
