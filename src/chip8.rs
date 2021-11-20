@@ -1,5 +1,6 @@
 use std::io::Read;
 use crate::bits::{U4, U12};
+use log;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {
@@ -90,6 +91,11 @@ impl Chip8 {
         }
     }
 
+    pub fn render(&self) {
+        clear_terminal();
+        render_screen(&self.display);
+    }
+
     pub fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::ClearScreen => {
@@ -110,14 +116,12 @@ impl Chip8 {
             Instruction::Draw { x_r, y_r, height } => { // TODO: problem is probably here
                 let x = self.registers[x_r as usize] % SCREEN_WIDTH as u8;
                 let y = self.registers[y_r as usize] % SCREEN_HEIGHT as u8;
-                println!("Sprite: {}", height);
                 for row_index in 0..height {
                     let mem_location = self.index_register + row_index as u16;
                     let sprite_row = self.memory[mem_location as usize];
-                    println!("{:08b}", sprite_row);
                     for bit_pos in 0..8 {
                         if ((1_u8 << bit_pos) & sprite_row) != 0 {
-                            let pix_x = x + bit_pos;
+                            let pix_x = x + 7 - bit_pos;
                             let pix_y = y + row_index;
                             if pix_x >= x && pix_y >= y {
                                 self.display[pix_x as usize][pix_y as usize] ^= true;
@@ -134,12 +138,42 @@ fn clear_terminal() {
     print!("{}[2J", 27 as char);
 }
 
-pub fn render_screen(display: &Screen) {
-    // clear_terminal();
+fn render_screen(display: &Screen) {
     for y in 0..SCREEN_HEIGHT {
         for x in 0..SCREEN_WIDTH {
             print!("{}", if display[x][y] { 'A' } else { ' ' });
         }
         println!("");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    fn init() {
+        env_logger::builder().is_test(true).try_init().unwrap();
+    }
+
+    use super::{Chip8, Instruction};
+    #[test]
+    fn draw_tests() {
+        init();
+        let mut chip8 = Chip8::new();
+        chip8.execute(Instruction::Draw { x_r: 0, y_r: 0, height: 5 });
+        assert!(chip8.display[0][0]);
+        assert!(chip8.display[1][0]);
+        assert!(chip8.display[0][1]);
+    }
+
+    use proptest::prelude::*;
+    proptest! {
+        #[test]
+        fn basic_instructions(v_u12 in 0..(1 << 12))
+        {
+            let mut chip8 = Chip8::new();
+            chip8.execute(Instruction::SetIndexRegister { value: v_u12 as u16 });
+            assert_eq!(chip8.index_register as i32, v_u12);
+            chip8.execute(Instruction::Jump { dest: v_u12 as u16 });
+            assert_eq!(chip8.pc as i32, v_u12);
+        }
     }
 }

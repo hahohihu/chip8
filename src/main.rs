@@ -2,7 +2,7 @@ mod decode;
 mod chip8;
 mod bits;
 
-use chip8::{Chip8, render_screen};
+use chip8::{Chip8};
 
 use log;
 use env_logger;
@@ -30,7 +30,7 @@ fn main() {
     chip8.read_program(file).expect("Failed to read ROM");
     loop {
         decode_execute(&mut chip8);
-        render_screen(&chip8.display);
+        chip8.render();
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
