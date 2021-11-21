@@ -83,7 +83,7 @@ pub struct Chip8 {
 }
 
 impl Chip8 {
-    pub fn new() -> Self {
+    pub fn new(start: Instant) -> Self {
         let mut chip8 = Chip8 {
             registers: [Wrapping(0); 16],
             memory: [0; 4096],
@@ -93,7 +93,7 @@ impl Chip8 {
             sound_timer: 0,
             display: BLANK_SCREEN,
             stack: Vec::new(),
-            last_clock: Instant::now(),
+            last_clock: start,
             rng: StdRng::seed_from_u64(0)
         };
         chip8.memory[0..FONT.len()].copy_from_slice(&FONT);
@@ -317,7 +317,7 @@ impl Chip8 {
             if self.sound_timer > 0 {
                 self.sound_timer -= 1; // TODO: beep here
             }
-            self.last_clock = now; // TODO: this gradually loses accuracy resulting in it being significantly less than <60 Hz
+            self.last_clock = now;
         }
         let raw_instruction: u16 = self.get_instruction();
         self.pc += 2;

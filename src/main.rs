@@ -7,7 +7,7 @@ use std::time::Instant;
 use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::{LogicalPosition, LogicalSize, PhysicalSize};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::event::{Event, VirtualKeyCode};
+use winit::event::{Event, StartCause, VirtualKeyCode};
 use winit_input_helper::WinitInputHelper;
 use std::time::{Duration};
 use env_logger;
@@ -19,77 +19,78 @@ fn load_rom(chip8: &mut Chip8) {
     chip8.print_program();
 }
 
+const KEY_MAPPING: [(VirtualKeyCode, u8); 16] = [
+    (VirtualKeyCode::Key1, 1_u8),
+    (VirtualKeyCode::Key2, 2),
+    (VirtualKeyCode::Key3, 3),
+    (VirtualKeyCode::Key4, 0xc),
+    (VirtualKeyCode::Q, 4),
+    (VirtualKeyCode::W, 5),
+    (VirtualKeyCode::E, 6),
+    (VirtualKeyCode::R, 0xd),
+    (VirtualKeyCode::A, 7),
+    (VirtualKeyCode::S, 8),
+    (VirtualKeyCode::D, 9),
+    (VirtualKeyCode::F, 0xe),
+    (VirtualKeyCode::Z, 0xa),
+    (VirtualKeyCode::X, 0),
+    (VirtualKeyCode::C, 0xb),
+    (VirtualKeyCode::V, 0xf),
+];
+
 fn main() {
-    let mut chip8 = Chip8::new();
+    let mut time = Instant::now();
+    let mut chip8 = Chip8::new(time);
     load_rom(&mut chip8);
     env_logger::builder().format_timestamp(None).init();
+    let clock_speed: u32 = 10000; // TODO: make configurable
+    let clock_gap: Duration = Duration::from_secs_f32(1.0) / clock_speed;
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
     let (window, width, height, mut _hidpi_factor) = create_window("CHIP-8 Emulator", &event_loop);
     let surface_texture = SurfaceTexture::new(width, height, &window);
     let mut pixels = Pixels::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, surface_texture).expect("Failed to start graphics library");
-    let mut time = Instant::now();
-    event_loop.run(move |event, _, control_flow| {
-        if let Event::RedrawRequested(_) = event {
-            chip8.draw(pixels.get_frame());
-            pixels.render().expect("Failed to render");
-        }
 
-        let mut key_pressed: Option<u8> = None;
+    let mut key_pressed: Option<u8> = None;
+    event_loop.run(move |event, _, control_flow| {
         if input.update(&event) {
             if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
                 *control_flow = ControlFlow::Exit;
                 return;
             }
-            
-            // Adjust high DPI factor
             if let Some(factor) = input.scale_factor_changed() {
                 _hidpi_factor = factor;
             }
-
-            // Resize the window
             if let Some(size) = input.window_resized() {
                 pixels.resize_surface(size.width, size.height);
             }
 
-            let key2num = [
-                (VirtualKeyCode::Key1, 1_u8),
-                (VirtualKeyCode::Key2, 2),
-                (VirtualKeyCode::Key3, 3),
-                (VirtualKeyCode::Key4, 0xc),
-                (VirtualKeyCode::Q, 4),
-                (VirtualKeyCode::W, 5),
-                (VirtualKeyCode::E, 6),
-                (VirtualKeyCode::R, 0xd),
-                (VirtualKeyCode::A, 7),
-                (VirtualKeyCode::S, 8),
-                (VirtualKeyCode::D, 9),
-                (VirtualKeyCode::F, 0xe),
-                (VirtualKeyCode::Z, 0xa),
-                (VirtualKeyCode::X, 0),
-                (VirtualKeyCode::C, 0xb),
-                (VirtualKeyCode::V, 0xf),
-            ];
-
-            for (key, num) in key2num {
-                if input.key_pressed(key) || input.key_held(key) { // TODO: this varies, in some cases wait until released
+            for (key, num) in KEY_MAPPING {
+                if input.key_pressed(key) {
                     key_pressed = Some(num);
-                    log::info!("Key pressed: {:?}", key_pressed);
+                }
+                if input.key_released(key) {
+                    key_pressed = None;
                 }
             }
         }
 
-        // Get a new delta time.
-        let now = Instant::now();
-        let dt = now.duration_since(time);
-        let clock_speed = 500_000; // TODO: make configurable
-        let clock_gap = Duration::from_secs_f32(1.0) / clock_speed;
-        if dt >= clock_gap {
-            println!("{:?}", dt);
-            if let Cycle::RedrawRequested = chip8.cycle(key_pressed, now) {
-                window.request_redraw();
-            }
-            time = now;
+        match event {
+            Event::RedrawRequested(_) => {
+                chip8.draw(pixels.get_frame());
+                pixels.render().expect("Failed to render");
+            },
+            Event::NewEvents(StartCause::Init) => {
+                *control_flow = ControlFlow::WaitUntil(time + clock_gap);
+            },
+            Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
+                if let Cycle::RedrawRequested = chip8.cycle(key_pressed, time) {
+                    window.request_redraw();
+                    *control_flow = ControlFlow::WaitUntil(time + clock_gap);
+                }
+                time += clock_gap;
+            },
+            _ => {}
         }
     });
 }
