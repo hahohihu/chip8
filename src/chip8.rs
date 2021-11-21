@@ -327,11 +327,7 @@ impl Chip8 {
         Cycle::Complete
     }
 
-    pub fn cycle(&mut self, key_pressed: Option<u8>, now: Instant) -> Cycle {
-        if !self.pc_inbounds() {
-            panic!("PC reached bad value: {}", self.pc);
-        }
-        key_pressed.map(|k| log::debug!("Key pressed {}", k));
+    fn update_timers(&mut self, now: Instant) {
         let time_60hz = Duration::from_secs_f32(1.0) / 60;
         if now.duration_since(self.last_clock) >= time_60hz {
             if self.delay_timer > 0 {
@@ -342,6 +338,14 @@ impl Chip8 {
             }
             self.last_clock = now;
         }
+    }
+
+    pub fn cycle(&mut self, key_pressed: Option<u8>, now: Instant) -> Cycle {
+        if !self.pc_inbounds() {
+            panic!("PC reached bad value: {}", self.pc);
+        }
+        key_pressed.map(|k| log::debug!("Key pressed {}", k));
+        self.update_timers(now);
         let raw_instruction: u16 = self.get_instruction();
         self.pc += 2;
         if let Some(instruction) = decode(raw_instruction) {
@@ -487,6 +491,22 @@ mod tests {
             for i in 0..=register {
                 assert_eq!(chip8.registers[i as usize].0, vals[i as usize]);
             }
+        }
+
+        #[test]
+        fn timers_work(
+            dur in 0..(1 << 4) as u8,
+        ) {
+            let mut time = Instant::now();
+            let mut chip8 = Chip8::new(time);
+            chip8.execute(Instruction::SetRegister { register: 0, value: dur }, None);
+            chip8.execute(Instruction::SetDelayTimer { register: 0 }, None);
+            for _ in 0..dur {
+                assert!(chip8.delay_timer > 0);
+                time += Duration::from_secs_f32(1.0) / 60;
+                chip8.update_timers(time);
+            }
+            assert!(chip8.delay_timer == 0);
         }
     }
 }
