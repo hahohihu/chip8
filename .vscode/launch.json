@@ -19,8 +19,14 @@
                     "kind": "bin"
                 }
             },
-            "args": ["font_draw_jmp.ch8"],
-            "cwd": "${workspaceFolder}"
+            "args": [
+                "/home/rachel/Downloads/Chip-8 Pack/Chip-8 Games/15 Puzzle [Roger Ivie].ch8"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "chip8=debug"
+            },
+            "stdio": null
         },
         {
             "type": "lldb",

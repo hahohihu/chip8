@@ -120,7 +120,7 @@ impl Chip8 {
 
     pub fn print_state(&self) {
         log::debug!("====Display=============================");
-        render_screen(&self.display);
+        print_screen(&self.display);
         log::debug!("====Registers===========================");
         for (i, reg) in self.registers.map(|v| v.0).iter().enumerate() {
             log::debug!("Register {} = {}", i, reg);
@@ -280,7 +280,7 @@ impl Chip8 {
                 }
             },
             Instruction::FontChar { register } => {
-                self.index_register = Wrapping(self.registers[(register & 0xf) as usize].0 as u16 * 5)
+                self.index_register = Wrapping((self.registers[register as usize].0 as u16 & 0xf) * 5)
             },
             Instruction::SetDelayTimer { register } => {
                 self.delay_timer = self.registers[register as usize].0;
@@ -294,17 +294,18 @@ impl Chip8 {
                 self.registers[0xf] = Wrapping(if self.index_register < saved_val { 1 } else { 0 })
             },
             Instruction::StoreMemory { register } => {
-                for i in 0..register as usize {
+                for i in 0..=register as usize {
                     self.memory[self.index_register.0 as usize + i] = 
                         self.registers[i].0;
                 }
+                // self.index_register += Wrapping(register as u16 + 1); // TODO; this is original behavior, not modern
             },
             Instruction::LoadMemory { register } => {
-                for i in 0..register as usize {
+                for i in 0..=register as usize {
                     self.registers[i].0 = 
                         self.memory[self.index_register.0 as usize + i];
-                        
                 }
+                // self.index_register += Wrapping(register as u16 + 1); // TODO; this is original behavior, not modern
             }
         }
         Cycle::Complete
@@ -344,29 +345,34 @@ impl Chip8 {
     }
 }
 
-fn render_screen(display: &Screen) {
+fn print_screen(display: &Screen) {
     for row in display {
         for pixel in row {
             print!("{}", if *pixel { 'Q' } else { ' ' });
         }
-        log::debug!("");
+        println!("");
     }
 }
 
 #[cfg(test)]
 mod tests {
     fn init() {
-        env_logger::builder().is_test(true).try_init().unwrap();
+        env_logger::builder()
+            .is_test(true)
+            .parse_env(env_logger::Env::default()
+                .filter_or(env_logger::DEFAULT_FILTER_ENV, "debug"))
+            .try_init()
+            .unwrap();
     }
 
     use std::num::Wrapping;
     use std::time::{Duration, Instant};
 
-    use super::{Chip8, Instruction};
+    use super::{Chip8, Instruction, print_screen};
     #[test]
     fn draw_tests() {
         init();
-        let mut chip8 = Chip8::new();
+        let mut chip8 = Chip8::new(Instant::now());
         chip8.execute(Instruction::Draw { x_r: 0, y_r: 0, height: 5 }, None);
         assert!(chip8.display[0][0]);
         assert!(chip8.display[1][0]);
@@ -379,37 +385,25 @@ mod tests {
     
     #[test]
     fn rom_test() {
-        let mut chip8 = Chip8::new();
-        chip8.read_program(std::fs::File::open("test/min_game.ch8").unwrap()).unwrap();
+        let mut chip8 = Chip8::new(Instant::now());
+        chip8.read_program(std::fs::File::open("/home/rachel/Downloads/Chip-8 Pack/Chip-8 Games/15 Puzzle [Roger Ivie].ch8").unwrap()).unwrap();
         let mut now = Instant::now();
-        for i in 0..35 {
+        for i in 0..10000 {
             now += Duration::from_secs(1);
-            chip8.cycle(Some(8), now);
-            log::debug!("~~~({})~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", i);
-            chip8.print_program();
-            chip8.print_state();
+            chip8.cycle(Some(4), now);
+            print_screen(&chip8.display);
         }
     }
 
     use proptest::prelude::*;
     proptest! {
         #[test]
-        fn basic_instructions(v_u12 in (0 as usize)..(1 << 12))
-        {
-            let mut chip8 = Chip8::new();
-            chip8.execute(Instruction::SetIndexRegister { value: v_u12 as u16 }, None);
-            assert_eq!(chip8.index_register, Wrapping(v_u12 as u16));
-            chip8.execute(Instruction::Jump { dest: v_u12 as u16 }, None);
-            assert_eq!(chip8.pc, v_u12);
-        }
-
-        #[test]
         fn draw_doesnt_crash(
             a in 0..(1 << 4),
             b in 0..(1 << 4),
             c in 0..(1 << 4),
         ) {
-            let mut chip8 = Chip8::new();
+            let mut chip8 = Chip8::new(Instant::now());
             chip8.execute(Instruction::Draw {x_r: a as u8, y_r: b as u8, height:c as u8}, None);
         }
     }

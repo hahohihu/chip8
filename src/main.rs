@@ -43,13 +43,14 @@ fn main() {
     let mut chip8 = Chip8::new(time);
     load_rom(&mut chip8);
     env_logger::builder().format_timestamp(None).init();
-    let clock_speed: u32 = 10000; // TODO: make configurable
+    let clock_speed: u32 = 1000000; // TODO: make configurable
     let clock_gap: Duration = Duration::from_secs_f32(1.0) / clock_speed;
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
     let (window, width, height, mut _hidpi_factor) = create_window("CHIP-8 Emulator", &event_loop);
     let surface_texture = SurfaceTexture::new(width, height, &window);
     let mut pixels = Pixels::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, surface_texture).expect("Failed to start graphics library");
+    println!("Starting CHIP-8 emulator");
 
     let mut key_pressed: Option<u8> = None;
     event_loop.run(move |event, _, control_flow| {
@@ -85,8 +86,8 @@ fn main() {
             },
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                 if let Cycle::RedrawRequested = chip8.cycle(key_pressed, time) {
-                    window.request_redraw();
                     *control_flow = ControlFlow::WaitUntil(time + clock_gap);
+                    window.request_redraw();
                 }
                 time += clock_gap;
             },
