@@ -50,7 +50,9 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
                 3 => Some(Instruction::BinaryXor { register1, register2 }),
                 4 => Some(Instruction::Add { register1, register2 }),
                 5 => Some(Instruction::SubtractForward { register1, register2 }),
+                6 => Some(Instruction::ShiftRight { register1, register2 }),
                 7 => Some(Instruction::SubtractBackward { register1, register2 }),
+                0xe => Some(Instruction::ShiftLeft { register1, register2 }),
                 _ => None
             }
         },
@@ -87,6 +89,7 @@ pub fn decode(instruction: u16) -> Option<Instruction> {
                 0x18 => Some(Instruction::SetSoundTimer { register: nib }),
                 0x1e => Some(Instruction::AddToIndex { register: nib }), // TODO: set overflow
                 0x29 => Some(Instruction::FontChar { register: nib }),
+                0x33 => Some(Instruction::RegToDecimal { register: nib }),
                 0x55 => Some(Instruction::StoreMemory { register: nib }),
                 0x65 => Some(Instruction::LoadMemory { register: nib }),
                 _ => None

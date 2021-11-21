@@ -39,10 +39,11 @@ const KEY_MAPPING: [(VirtualKeyCode, u8); 16] = [
 ];
 
 fn main() {
+    env_logger::builder().format_timestamp(None).init();
     let mut time = Instant::now();
     let mut chip8 = Chip8::new(time);
     load_rom(&mut chip8);
-    env_logger::builder().format_timestamp(None).init();
+    chip8.print_program();
     let clock_speed: u32 = 1000000; // TODO: make configurable
     let clock_gap: Duration = Duration::from_secs_f32(1.0) / clock_speed;
     let event_loop = EventLoop::new();

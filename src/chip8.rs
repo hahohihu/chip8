@@ -26,6 +26,8 @@ pub enum Instruction {
     Add { register1: U4, register2: U4 },
     SubtractForward { register1: U4, register2: U4 },
     SubtractBackward { register1: U4, register2: U4 },
+    ShiftRight { register1: U4, register2: U4 },
+    ShiftLeft { register1: U4, register2: U4 },
     Random { register: U4, value: u8 },
     Draw { x_r: U4, y_r: U4, height: U4 },
     SkipPressed { key: U4 },
@@ -36,6 +38,7 @@ pub enum Instruction {
     SetDelayTimer { register: U4 },
     SetSoundTimer { register: U4 },
     AddToIndex { register: U4 },
+    RegToDecimal { register: U4 },
     StoreMemory { register: U4 },
     LoadMemory { register: U4 },
 }
@@ -105,7 +108,7 @@ impl Chip8 {
     }
 
     pub fn pc_inbounds(&self) -> bool {
-        self.pc >= INIT_INDEX && self.pc < 4095 && self.pc % 2 == 0
+        self.pc >= INIT_INDEX && self.pc < 4095
     }
 
     pub fn should_beep(&self) -> bool {
@@ -228,6 +231,12 @@ impl Chip8 {
                     { 0 } else { 1 }
                 )
             },
+            Instruction::ShiftRight { register1, register2: _ } => {
+                self.registers[register1 as usize] >>= 1; // different between chip and super-chip
+            },
+            Instruction::ShiftLeft { register1, register2: _ } => {
+                self.registers[register1 as usize] <<= 1; // different between chip and super-chip
+            },
             Instruction::SetIndexRegister { value } => {
                 self.index_register = Wrapping(value);
             },
@@ -293,6 +302,13 @@ impl Chip8 {
                 self.index_register += Wrapping(self.registers[register as usize].0 as u16);
                 self.registers[0xf] = Wrapping(if self.index_register < saved_val { 1 } else { 0 })
             },
+            Instruction::RegToDecimal { register } => {
+                let mut val = self.registers[register as usize].0;
+                for i in (0..3).rev() {
+                    self.memory[self.index_register.0 as usize + i] = val % 10;
+                    val /= 10;
+                }
+            },
             Instruction::StoreMemory { register } => {
                 for i in 0..=register as usize {
                     self.memory[self.index_register.0 as usize + i] = 
@@ -331,7 +347,7 @@ impl Chip8 {
         if let Some(instruction) = decode(raw_instruction) {
             return self.execute(instruction, key_pressed);
         } else {
-            panic!("Reached unimplemented or invalid instruction: {:#04x}", raw_instruction);
+            panic!("Reached unimplemented or invalid instruction: {:#04x} at PC {}", raw_instruction, self.pc);
         }
     }
 
@@ -382,7 +398,25 @@ mod tests {
         assert!(!chip8.display[1][0]);
         assert!(!chip8.display[0][1]);
     }
-    
+
+    #[test]
+    fn num_tests() {
+        init();
+        let mut chip8 = Chip8::new(Instant::now());
+        chip8.execute(Instruction::SetRegister { register: 0, value: 123 }, None);
+        chip8.execute(Instruction::SetIndexRegister { value: 0x400 }, None);
+        chip8.execute(Instruction::RegToDecimal { register: 0 }, None);
+        assert_eq!(chip8.memory[0x400], 1);
+        assert_eq!(chip8.memory[0x401], 2);
+        assert_eq!(chip8.memory[0x402], 3);
+        chip8.execute(Instruction::SetRegister { register: 0, value: 10 }, None);
+        chip8.execute(Instruction::SetIndexRegister { value: 0x400 }, None);
+        chip8.execute(Instruction::RegToDecimal { register: 0 }, None);
+        assert_eq!(chip8.memory[0x400], 0);
+        assert_eq!(chip8.memory[0x401], 1);
+        assert_eq!(chip8.memory[0x402], 0);
+    }
+
     #[test]
     fn rom_test() {
         let mut chip8 = Chip8::new(Instant::now());
@@ -396,7 +430,26 @@ mod tests {
     }
 
     use proptest::prelude::*;
+    use rand::prelude::*;
     proptest! {
+        #[test]
+        fn instruction_tests(
+            a in 0..u8::MAX,
+            b in 0..u8::MAX,
+            r1 in 0..15 as u8,
+            r2 in 0..15 as u8
+        ) {
+            let mut chip8 = Chip8::new(Instant::now());
+            chip8.execute(Instruction::SetRegister { register: r1, value: a as u8 }, None);
+            assert_eq!(chip8.registers[r1 as usize].0, a as u8);
+            chip8.execute(Instruction::SetRegister { register: r2, value: b as u8 }, None);
+            assert_eq!(chip8.registers[r2 as usize].0, b as u8);
+            chip8.execute(Instruction::MovRegister { register1: r1, register2: r2 }, None);
+            assert_eq!(chip8.registers[r1 as usize], chip8.registers[r2 as usize]);
+            chip8.execute(Instruction::Add { register1: r1, register2: r2 }, None);
+            assert_eq!(chip8.registers[r1 as usize], Wrapping(b) + Wrapping(b));
+        }
+
         #[test]
         fn draw_doesnt_crash(
             a in 0..(1 << 4),
@@ -405,6 +458,35 @@ mod tests {
         ) {
             let mut chip8 = Chip8::new(Instant::now());
             chip8.execute(Instruction::Draw {x_r: a as u8, y_r: b as u8, height:c as u8}, None);
+        }
+
+        #[test]
+        fn memory_bothways(
+            register in 0..(1 << 4) as u8,
+            mem in 0..(1 << 11) as u16,
+            seed in 0..32 as u64
+        ) {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let mut chip8 = Chip8::new(Instant::now());
+            let mut vals = Vec::new();
+            for i in 0..=register {
+                let value = rng.gen();
+                vals.push(value);
+                chip8.execute(Instruction::SetRegister { register: i, value }, None);
+                assert_eq!(chip8.registers[i as usize].0, value);
+            }
+            chip8.execute(Instruction::SetIndexRegister { value: mem }, None);
+            assert_eq!(chip8.index_register.0, mem);
+            chip8.execute(Instruction::StoreMemory { register: register }, None);
+            for i in 0..=register {
+                assert_eq!(vals[i as usize], chip8.memory[(mem + i as u16) as usize]);
+                chip8.execute(Instruction::SetRegister { register: i , value: 0 }, None);
+                assert_eq!(chip8.registers[i as usize].0, 0);
+            }
+            chip8.execute(Instruction::LoadMemory { register: register }, None);
+            for i in 0..=register {
+                assert_eq!(chip8.registers[i as usize].0, vals[i as usize]);
+            }
         }
     }
 }
