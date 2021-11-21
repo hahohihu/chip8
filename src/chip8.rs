@@ -108,6 +108,10 @@ impl Chip8 {
         self.pc >= INIT_INDEX && self.pc < 4095 && self.pc % 2 == 0
     }
 
+    pub fn should_beep(&self) -> bool {
+        self.sound_timer > 0
+    }
+
     pub fn read_program(&mut self, read: impl std::io::Read) -> Result<usize, std::io::Error> {
         let mut slice = &mut self.memory[INIT_INDEX .. ];
         let mut take = read.take(slice.len() as u64);
@@ -115,21 +119,21 @@ impl Chip8 {
     }
 
     pub fn print_state(&self) {
-        println!("====Display=============================");
+        log::debug!("====Display=============================");
         render_screen(&self.display);
-        println!("====Registers===========================");
+        log::debug!("====Registers===========================");
         for (i, reg) in self.registers.map(|v| v.0).iter().enumerate() {
-            println!("Register {} = {}", i, reg);
+            log::debug!("Register {} = {}", i, reg);
         }
-        println!("Index = {}", self.index_register.0);
-        println!("Delay = {}", self.delay_timer);
-        println!("Sound = {}", self.sound_timer);
-        println!("====Stack===============================");
-        println!("Stack = {:?}", self.stack);
+        log::debug!("Index = {}", self.index_register.0);
+        log::debug!("Delay = {}", self.delay_timer);
+        log::debug!("Sound = {}", self.sound_timer);
+        log::debug!("====Stack===============================");
+        log::debug!("Stack = {:?}", self.stack);
     }
     
     pub fn print_program(&self) {
-        println!("====Program=============================");
+        log::debug!("====Program=============================");
         for i in (INIT_INDEX..4095).step_by(2) {
             let val1 = self.memory[i];
             let val2 = self.memory[i+1];
@@ -137,10 +141,12 @@ impl Chip8 {
                 break;
             }
             let raw = self.memory[i + 1] as u16 | (self.memory[i] as u16) << 8;
-            if self.pc == i {
-                print!(">>PC>> ");
-            }
-            println!("{}: {:#04x} => {:?}", i, raw, decode(raw));
+            let index = if self.pc == i {
+                format!("[{}]", i)
+            } else {
+                format!("{}", i)
+            };
+            log::debug!("{}: {:#04x} => {:?}", index, raw, decode(raw));
         }
     }
 
@@ -315,7 +321,7 @@ impl Chip8 {
                 self.delay_timer -= 1;
             }
             if self.sound_timer > 0 {
-                self.sound_timer -= 1; // TODO: beep here
+                self.sound_timer -= 1; // TODO: beep
             }
             self.last_clock = now;
         }
@@ -343,7 +349,7 @@ fn render_screen(display: &Screen) {
         for pixel in row {
             print!("{}", if *pixel { 'Q' } else { ' ' });
         }
-        println!("");
+        log::debug!("");
     }
 }
 
@@ -379,7 +385,7 @@ mod tests {
         for i in 0..35 {
             now += Duration::from_secs(1);
             chip8.cycle(Some(8), now);
-            println!("~~~({})~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", i);
+            log::debug!("~~~({})~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", i);
             chip8.print_program();
             chip8.print_state();
         }
