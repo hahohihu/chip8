@@ -44,7 +44,7 @@ fn main() {
     let mut chip8 = Chip8::new(time);
     load_rom(&mut chip8);
     chip8.print_program();
-    let clock_speed: u32 = 1000000; // TODO: make configurable
+    let clock_speed: u32 = 500; // TODO: make configurable
     let clock_gap: Duration = Duration::from_secs_f32(1.0) / clock_speed;
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
@@ -56,6 +56,8 @@ fn main() {
     let mut key_pressed: [bool; 16] = [false; 16];
     let mut debugging = true;
     let mut next_cycle = false;
+    let mut last_render = time;
+    let mut wanna_render = Cycle::Complete;
     event_loop.run(move |event, _, control_flow| {
         if input.update(&event) {
             if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
@@ -97,13 +99,21 @@ fn main() {
             },
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                 if !debugging || next_cycle {
-                    if let Cycle::RedrawRequested = chip8.cycle(key_pressed, time) {
-                        window.request_redraw();
+                    let now = Instant::now();
+                    if let Cycle::RedrawRequested = chip8.cycle(key_pressed, now) {
+                        wanna_render = Cycle::RedrawRequested;
                     }
                     if debugging {
                         next_cycle = false;
                         print!("DEBUGGING: {}", debugging);
                         chip8.print_debug_view();
+                    }
+                    if let Cycle::RedrawRequested = wanna_render {
+                        if now.duration_since(last_render) >= Duration::from_secs_f32(1.0 / 60.0) {
+                            wanna_render = Cycle::Complete;
+                            last_render = now;
+                            window.request_redraw();
+                        }
                     }
                 }
                 time += clock_gap;

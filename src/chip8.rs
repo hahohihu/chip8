@@ -347,13 +347,11 @@ impl Chip8 {
             Instruction::SkipPressed { key } => {
                 if key_pressed[self.registers[key as usize].0 as usize] {
                     self.pc += 2;
-                    log::debug!("Key {} pressed and skipped", key);
                 }
             },
             Instruction::SkipNotPressed { key } => {
                 if !key_pressed[self.registers[key as usize].0 as usize] {
                     self.pc += 2;
-                    log::debug!("Key {} not pressed and skipped", key);
                 }
             },
             Instruction::GetDelayTimer { register } => {
@@ -363,7 +361,6 @@ impl Chip8 {
                 if let Some(i) = key_pressed.iter().position(|&b| b) {
                     self.registers[register as usize] = Wrapping(i as u8);
                 } else {
-                    log::debug!("Waiting for any key");
                     self.pc -= 2;
                 }
             },
@@ -407,14 +404,10 @@ impl Chip8 {
     }
 
     fn update_timers(&mut self, now: Instant) {
-        let elapsed_frames = (now.duration_since(self.last_clock) * 60).as_secs() as u8;
-        if self.delay_timer > 0 && elapsed_frames > 0 {
-            log::info!("{:?} v {:?}", now, self.last_clock);
-            log::info!("Updating timers ({}) by: {}", self.delay_timer, elapsed_frames);
-        }
+        let elapsed_frames = (now.duration_since(self.last_clock).as_secs_f32() * 60.0).floor() as u8;
         self.delay_timer -= min(self.delay_timer, elapsed_frames);
         self.sound_timer -= min(self.sound_timer, elapsed_frames); // TODO: beep
-        self.last_clock += Duration::from_secs(1) * elapsed_frames as u32 / 60;
+        self.last_clock += Duration::from_secs_f32(elapsed_frames as f32 / 60.0);
     }
 
     pub fn cycle(&mut self, key_pressed: [bool; 16], now: Instant) -> Cycle {
