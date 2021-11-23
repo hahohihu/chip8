@@ -1,10 +1,16 @@
+use std::cmp::max;
+use std::cmp::min;
 use std::io::Read;
 use std::num::Wrapping;
+use std::ops::Range;
+use std::slice::Iter;
 use std::time::Duration;
 use std::time::Instant;
 use crate::bits::{U4, U12};
 use crate::decode::decode;
-use rand::prelude::*;
+use rand_xoshiro::Xoroshiro64StarStar;
+use rand_core::SeedableRng;
+use rand_core::RngCore;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {
@@ -82,7 +88,7 @@ pub struct Chip8 {
     pub display: Screen,
     pub stack: Vec<usize>,
     last_clock: Instant,
-    rng: StdRng
+    rng: Xoroshiro64StarStar
 }
 
 impl Chip8 {
@@ -97,7 +103,7 @@ impl Chip8 {
             display: BLANK_SCREEN,
             stack: Vec::new(),
             last_clock: start,
-            rng: StdRng::seed_from_u64(0)
+            rng: Xoroshiro64StarStar::from_entropy()
         };
         chip8.memory[0..FONT.len()].copy_from_slice(&FONT);
         chip8
@@ -121,18 +127,94 @@ impl Chip8 {
         take.read(&mut slice)
     }
 
-    pub fn print_state(&self) {
-        log::debug!("====Display=============================");
-        print_screen(&self.display);
-        log::debug!("====Registers===========================");
-        for (i, reg) in self.registers.map(|v| v.0).iter().enumerate() {
-            log::debug!("Register {} = {}", i, reg);
+    pub fn show_display(&self) -> impl Iterator<Item = String> + '_ {
+        self.display
+            .map(|row| 
+                row.map(|pixel| if pixel { 'Q' } else { ' ' })
+                    .iter()
+                    .collect()
+            ).into_iter()
+    }
+
+    pub fn show_registers(&self) -> impl Iterator<Item = String> + '_ {
+        self.registers
+            .iter()
+            .enumerate()
+            .map(|(i, reg)| {
+                format!("R{}: {}", i, reg.0)
+            })
+            .chain([
+                format!("Index: {}", self.index_register.0),
+                format!("Delay: {}", self.delay_timer),
+                format!("Sound: {}", self.sound_timer),
+            ])
+    }
+
+    pub fn show_stack(&self) -> impl Iterator<Item = String> + '_ {
+        self.stack.iter().rev().map(|&p| format!("{:#x}", p))
+    }
+
+    pub fn show_part_of_program(&self, lines: Range<usize>) -> impl Iterator<Item = String> + '_ {
+        lines.step_by(2)
+            .map(|i| -> String {
+                let raw = self.memory[i + 1] as u16 | (self.memory[i] as u16) << 8;
+                let index = if self.pc == i {
+                    format!("[{}]", i)
+                } else {
+                    format!("{}", i)
+                };
+                format!("{}: {:#04x} => {:?}", index, raw, decode(raw))
+            })
+    }
+
+    pub fn print_debug_view(&self) {
+        struct Section {
+            pub title: String,
+            pub contents: Vec<String>
         }
-        log::debug!("Index = {}", self.index_register.0);
-        log::debug!("Delay = {}", self.delay_timer);
-        log::debug!("Sound = {}", self.sound_timer);
-        log::debug!("====Stack===============================");
-        log::debug!("Stack = {:?}", self.stack);
+        fn side_by_side(sections: &[Section; 3]) {
+            let widths: Vec<usize> = sections
+                .iter()
+                .map(|sect| 
+                    max(sect.contents.iter().map(|s| s.len()).max().unwrap_or(0),
+                    sect.title.len())
+                ).collect();
+            
+            assert!(widths.len() == sections.len());
+            for (&width, section) in widths.iter().zip(sections.iter()) {
+                print!("{:width$}|", section.title, width=width);
+            }
+            println!("");
+            let longest_section = sections.iter().map(|s| s.contents.len()).max().unwrap();
+            for i in 0..longest_section {
+                for (&width, section) in widths.iter().zip(sections.iter()) {
+                    print!("{:width$}|", 
+                        section.contents.iter()
+                            .nth(i).unwrap_or(&String::from("")),
+                        width=width
+                    );
+                }
+                println!("");
+            }
+        }
+        let display = Section { 
+            title: String::from("Display"), 
+            contents: self.show_display().collect()
+        };
+        let reg = Section { 
+            title: String::from("Registers"), 
+            contents: self.show_registers().collect()
+        };
+        let prog = Section { 
+            title: String::from("Program"), 
+            contents: self.show_part_of_program(self.pc-18..self.pc+20).collect()
+        };
+        let stack = Section { 
+            title: String::from("Stack"), 
+            contents: self.show_stack().collect()
+        };
+        print_screen(&self.display);
+        side_by_side(&[reg, prog, stack]);
     }
     
     pub fn print_program(&self) {
@@ -153,7 +235,7 @@ impl Chip8 {
         }
     }
 
-    pub fn execute(&mut self, instruction: Instruction, key_pressed: Option<u8>) -> Cycle {
+    pub fn execute(&mut self, instruction: Instruction, key_pressed: [bool; 16]) -> Cycle {
         match instruction {
             Instruction::ClearScreen => {
                 self.display = BLANK_SCREEN;
@@ -241,7 +323,7 @@ impl Chip8 {
                 self.index_register = Wrapping(value);
             },
             Instruction::Random { register, value } => {
-                let num: u8 = self.rng.gen();
+                let num: u8 = self.rng.next_u32() as u8;
                 self.registers[register as usize].0 = num & value;
             },
             Instruction::Draw { x_r, y_r, height } => { // TODO: problem is probably here
@@ -263,28 +345,25 @@ impl Chip8 {
                 return Cycle::RedrawRequested;
             },
             Instruction::SkipPressed { key } => {
-                if let Some(k) = key_pressed {
-                    if self.registers[key as usize].0 == k {
-                        self.pc += 2;
-                    }
+                if key_pressed[self.registers[key as usize].0 as usize] {
+                    self.pc += 2;
+                    log::debug!("Key {} pressed and skipped", key);
                 }
             },
             Instruction::SkipNotPressed { key } => {
-                if let Some(k) = key_pressed {
-                    if self.registers[key as usize].0 != k {
-                        self.pc += 2;
-                    }
-                } else {
+                if !key_pressed[self.registers[key as usize].0 as usize] {
                     self.pc += 2;
+                    log::debug!("Key {} not pressed and skipped", key);
                 }
             },
             Instruction::GetDelayTimer { register } => {
                 self.registers[register as usize] = Wrapping(self.delay_timer);
             },
             Instruction::GetKey { register } => {
-                if let Some(key) = key_pressed {
-                    self.registers[register as usize] = Wrapping(key);
+                if let Some(i) = key_pressed.iter().position(|&b| b) {
+                    self.registers[register as usize] = Wrapping(i as u8);
                 } else {
+                    log::debug!("Waiting for any key");
                     self.pc -= 2;
                 }
             },
@@ -328,23 +407,20 @@ impl Chip8 {
     }
 
     fn update_timers(&mut self, now: Instant) {
-        let time_60hz = Duration::from_secs_f32(1.0) / 60;
-        if now.duration_since(self.last_clock) >= time_60hz {
-            if self.delay_timer > 0 {
-                self.delay_timer -= 1;
-            }
-            if self.sound_timer > 0 {
-                self.sound_timer -= 1; // TODO: beep
-            }
-            self.last_clock = now;
+        let elapsed_60hz = (now.duration_since(self.last_clock) * 60).as_secs() as u8;
+        if self.delay_timer > 0 && elapsed_60hz > 0 {
+            log::info!("{:?} v {:?}", now, self.last_clock);
+            log::info!("Updating timers ({}) by: {}", self.delay_timer, elapsed_60hz);
         }
+        self.delay_timer -= min(self.delay_timer, elapsed_60hz);
+        self.sound_timer -= min(self.sound_timer, elapsed_60hz); // TODO: beep
+        self.last_clock += Duration::from_secs(1) * elapsed_60hz as u32 / 60;
     }
 
-    pub fn cycle(&mut self, key_pressed: Option<u8>, now: Instant) -> Cycle {
+    pub fn cycle(&mut self, key_pressed: [bool; 16], now: Instant) -> Cycle {
         if !self.pc_inbounds() {
             panic!("PC reached bad value: {}", self.pc);
         }
-        key_pressed.map(|k| log::debug!("Key pressed {}", k));
         self.update_timers(now);
         let raw_instruction: u16 = self.get_instruction();
         self.pc += 2;

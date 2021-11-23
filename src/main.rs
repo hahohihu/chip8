@@ -19,8 +19,8 @@ fn load_rom(chip8: &mut Chip8) {
     chip8.print_program();
 }
 
-const KEY_MAPPING: [(VirtualKeyCode, u8); 16] = [
-    (VirtualKeyCode::Key1, 1_u8),
+const KEY_MAPPING: [(VirtualKeyCode, usize); 16] = [
+    (VirtualKeyCode::Key1, 1),
     (VirtualKeyCode::Key2, 2),
     (VirtualKeyCode::Key3, 3),
     (VirtualKeyCode::Key4, 0xc),
@@ -39,7 +39,7 @@ const KEY_MAPPING: [(VirtualKeyCode, u8); 16] = [
 ];
 
 fn main() {
-    env_logger::builder().format_timestamp(None).init();
+    env_logger::builder().init();
     let mut time = Instant::now();
     let mut chip8 = Chip8::new(time);
     load_rom(&mut chip8);
@@ -53,7 +53,9 @@ fn main() {
     let mut pixels = Pixels::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, surface_texture).expect("Failed to start graphics library");
     println!("Starting CHIP-8 emulator");
 
-    let mut key_pressed: Option<u8> = None;
+    let mut key_pressed: [bool; 16] = [false; 16];
+    let mut debugging = true;
+    let mut next_cycle = false;
     event_loop.run(move |event, _, control_flow| {
         if input.update(&event) {
             if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
@@ -69,11 +71,19 @@ fn main() {
 
             for (key, num) in KEY_MAPPING {
                 if input.key_pressed(key) {
-                    key_pressed = Some(num);
+                    key_pressed[num] = true;
                 }
                 if input.key_released(key) {
-                    key_pressed = None;
+                    key_pressed[num] = false;
                 }
+            }
+
+            if input.key_pressed(VirtualKeyCode::P) {
+                debugging ^= true;
+            }
+
+            if input.key_released(VirtualKeyCode::N) {
+                next_cycle = true;
             }
         }
 
@@ -86,11 +96,18 @@ fn main() {
                 *control_flow = ControlFlow::WaitUntil(time + clock_gap);
             },
             Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-                if let Cycle::RedrawRequested = chip8.cycle(key_pressed, time) {
-                    *control_flow = ControlFlow::WaitUntil(time + clock_gap);
-                    window.request_redraw();
+                if !debugging || next_cycle {
+                    if let Cycle::RedrawRequested = chip8.cycle(key_pressed, time) {
+                        window.request_redraw();
+                    }
+                    if debugging {
+                        next_cycle = false;
+                        print!("DEBUGGING: {}", debugging);
+                        chip8.print_debug_view();
+                    }
                 }
                 time += clock_gap;
+                *control_flow = ControlFlow::WaitUntil(time);
             },
             _ => {}
         }

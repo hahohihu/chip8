@@ -20,7 +20,7 @@
                 }
             },
             "args": [
-                "/home/rachel/Downloads/Chip-8 Pack/Chip-8 Games/15 Puzzle [Roger Ivie].ch8"
+                "/home/rachel/Downloads/Chip-8 Pack/Chip-8 Games/Pong (1 player).ch8"
             ],
             "cwd": "${workspaceFolder}",
             "env": {

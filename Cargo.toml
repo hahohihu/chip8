@@ -11,10 +11,12 @@ log = "0.4.14"
 pixels = "0.8.0"
 winit = "0.25"
 winit_input_helper = "0.10"
-rand = "0.8.4"
+rand_core = { version = "0.6", features = ["getrandom"] }
+rand_xoshiro = "0.6.0"
 
 [dev-dependencies]
 proptest = "1.0.0"
 
 [profile.release]
 debug = true
+
