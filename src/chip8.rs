@@ -407,14 +407,14 @@ impl Chip8 {
     }
 
     fn update_timers(&mut self, now: Instant) {
-        let elapsed_60hz = (now.duration_since(self.last_clock) * 60).as_secs() as u8;
-        if self.delay_timer > 0 && elapsed_60hz > 0 {
+        let elapsed_frames = (now.duration_since(self.last_clock) * 60).as_secs() as u8;
+        if self.delay_timer > 0 && elapsed_frames > 0 {
             log::info!("{:?} v {:?}", now, self.last_clock);
-            log::info!("Updating timers ({}) by: {}", self.delay_timer, elapsed_60hz);
+            log::info!("Updating timers ({}) by: {}", self.delay_timer, elapsed_frames);
         }
-        self.delay_timer -= min(self.delay_timer, elapsed_60hz);
-        self.sound_timer -= min(self.sound_timer, elapsed_60hz); // TODO: beep
-        self.last_clock += Duration::from_secs(1) * elapsed_60hz as u32 / 60;
+        self.delay_timer -= min(self.delay_timer, elapsed_frames);
+        self.sound_timer -= min(self.sound_timer, elapsed_frames); // TODO: beep
+        self.last_clock += Duration::from_secs(1) * elapsed_frames as u32 / 60;
     }
 
     pub fn cycle(&mut self, key_pressed: [bool; 16], now: Instant) -> Cycle {
